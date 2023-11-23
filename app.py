@@ -1,3 +1,5 @@
+import hashlib
+
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -5,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 
 from config import DevelopmentConfig, ProductionConfig
+from db import init_db, conect_database
 
 app = Flask(__name__)
 
@@ -19,6 +22,7 @@ else:
 
 jwt = JWTManager(app)
 
+init_db()
 @app.route('/')
 def index():
     return 'Hello World!'
@@ -30,7 +34,17 @@ def login():
     if username is None or username == '' or password is None or password == '':
         return jsonify({'error': 'username and password fields are mandatory'}), 400
 
-    if username == 'sinistro@sinistro.com' and password == 'aitest1234':
+    conn = conect_database()
+    cursor = conn.cursor()
+
+    password_md5 = hashlib.md5(password.encode()).hexdigest()
+
+    cursor.execute('SELECT * FROM users WHERE username=? AND password= ?', (username, password_md5))
+    user = cursor.fetchone()
+
+    conn.close()
+
+    if user:
         access_token = create_access_token(identity=username)
         return jsonify(access_token=access_token), 200
     else:
