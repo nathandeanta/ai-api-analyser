@@ -28,27 +28,34 @@ def index():
     return 'Hello World!'
 @app.route('/login', methods=['POST'])
 def login():
-    username = request.json.get('username', None)
-    password = request.json.get('password', None)
+    try:
+        username = request.json.get('username', None)
+        password = request.json.get('password', None)
 
-    if username is None or username == '' or password is None or password == '':
-        return jsonify({'error': 'username and password fields are mandatory'}), 400
+        if username is None or username == '' or password is None or password == '':
+            return jsonify({'error': 'username and password fields are mandatory'}), 400
 
-    conn = conect_database()
-    cursor = conn.cursor()
+        conn = conect_database()
+        cursor = conn.cursor()
 
-    password_md5 = hashlib.md5(password.encode()).hexdigest()
+        password_md5 = hashlib.md5(password.encode()).hexdigest()
 
-    cursor.execute('SELECT * FROM users WHERE username=? AND password= ?', (username, password_md5))
-    user = cursor.fetchone()
+        cursor.execute('SELECT * FROM users WHERE username=? AND password= ?', (username, password_md5))
+        user = cursor.fetchone()
 
-    conn.close()
+        conn.close()
 
-    if user:
-        access_token = create_access_token(identity=username)
-        return jsonify(access_token=access_token), 200
-    else:
-        return jsonify({"msg": "Invalid credentials"}), 401
+        if user:
+            access_token = create_access_token(identity=username)
+            return jsonify(access_token=access_token), 200
+        else:
+            return jsonify({"msg": "Invalid credentials"}), 401
+    except Exception as e:
+
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        conn.close()
 
 
 @app.route('/theft', methods=['POST'])
@@ -61,20 +68,14 @@ def theft():
 
     try:
 
-        descriptions = [
-            "Roubo no metrô com ameaça.",
-            "Furto simples enquanto caminhava, sem vestígios.",
-            "Furto qualificado com arrombamento e destruição.",
-            "Roubo roubaram meu celular, o ladrao estava armado",
-            "Roubo em um café com violência.",
-            "Furto simples, celular desapareceu sem vestígios.",
-            "Furto simples, me roubaram e eu nao vi.",
-            "Furto simples, estava andando pela rua e me roubaram e eu nem senti.",
-            "Furto simples, deixei o celular encima da mesa e quando fui perceber nao estava mais la.",
-        ]
+        conn = conect_database()
+        cursor = conn.cursor()
 
-        labels = ["Roubo", "Furto Simples", "Furto Qualificado", "Roubo", "Roubo", "Furto Simples", "Furto Simples",
-                  "Furto Simples", "Furto Simples"]
+        cursor.execute('SELECT description, type FROM theft')
+        rows = cursor.fetchall()
+
+        descriptions = [row[0] for row in rows]
+        labels = [row[1] for row in rows]
 
         vectorizer = TfidfVectorizer(stop_words='english')
         X = vectorizer.fit_transform(descriptions)
@@ -90,7 +91,108 @@ def theft():
         return jsonify({"prediction": prediction[0]})
     except Exception as e:
         return jsonify({"error": str(e)})
+    finally:
+        conn.close()
 
+@app.route('/create/theft', methods=['POST'])
+@jwt_required()
+def create_theft():
+    try:
+        desc = request.json.get('desc', None)
+        type = request.json.get('type', None)
+
+        if desc is None or desc == '' or type is None or type == '':
+            return jsonify({'error': 'desc and type fields are mandatory'}), 400
+
+        if type not in ["Roubo", "Furto Simples", "Furto Qualificado"]:
+            return jsonify({'error': 'type Roubo, Furto Simples and Furto Qualificado'}), 400
+
+        conn = conect_database()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM theft WHERE type=? AND description= ?', (type, desc))
+        theft = cursor.fetchone();
+
+        if theft:
+            return jsonify({'error': 'is already registered'}), 400
+
+        cursor.execute('INSERT INTO theft (description, type) VALUES (?, ?)', (desc,type))
+        conn.commit()
+
+        return jsonify({"msg": "sucess"})
+    except Exception as e:
+
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+
+        conn.close()
+
+@app.route('/list/theft', methods=['GET'])
+@jwt_required()
+def list_theft():
+    try:
+        conn = conect_database()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM theft')
+        theft = cursor.fetchall()
+
+        theft_list = [{"id": row[0],"type": row[1], "description": row[2]} for row in theft]
+
+        return jsonify({"theft_list": theft_list})
+
+    except Exception as e:
+
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+
+        conn.close()
+
+@app.route('/delete/theft/<int:theft_id>', methods=['DELETE'])
+@jwt_required()
+def delete_theft(theft_id):
+    try:
+        conn = conect_database()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM theft WHERE id = ?', (theft_id,))
+        conn.commit()
+
+        return jsonify({"message": "Successfully deleted!"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        conn.close()
+@app.route('/update/theft/<int:theft_id>', methods=['PUT'])
+@jwt_required()
+def update_theft(theft_id):
+    try:
+        conn = conect_database()
+        cursor = conn.cursor()
+
+        desc = request.json.get('desc', None)
+        type = request.json.get('type', None)
+
+        if desc is None or desc == '' or type is None or type == '':
+            return jsonify({'error': 'desc and type fields are mandatory'}), 400
+
+        if type not in ["Roubo", "Furto Simples", "Furto Qualificado"]:
+            return jsonify({'error': 'type Roubo, Furto Simples and Furto Qualificado'}), 400
+
+        cursor.execute('UPDATE theft SET type = ?, description = ? WHERE id = ?', (type, desc, theft_id))
+        conn.commit()
+
+        return jsonify({"message": "Updated successfully!"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True)
