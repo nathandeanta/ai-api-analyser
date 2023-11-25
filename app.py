@@ -150,6 +150,32 @@ def list_theft():
 
         conn.close()
 
+@app.route('/details/theft/<int:theft_id>', methods=['GET'])
+@jwt_required()
+def details_theft(theft_id):
+    try:
+        conn = conect_database()
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT * FROM theft WHERE id = ?', (theft_id,))
+        theft_data = cursor.fetchone()
+
+        if theft_data:
+            theft_details = {
+                "id": theft_data[0],
+                "type": theft_data[1],
+                "description": theft_data[2]
+
+            }
+            return jsonify({"theft_details": theft_details})
+        else:
+            return jsonify({"message": "Item not found."}), 404
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        conn.close()
 @app.route('/delete/theft/<int:theft_id>', methods=['DELETE'])
 @jwt_required()
 def delete_theft(theft_id):
